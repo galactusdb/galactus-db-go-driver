@@ -43,9 +43,6 @@ func Connect(uri, username, password, database string, timeout time.Duration) (*
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	if database == "" {
-		database = "neo4j"
-	}
 	port := u.Port()
 	if port == "" {
 		port = "7687"
@@ -95,6 +92,16 @@ func (d *Driver) write(b []byte) error {
 	return nil
 }
 func (d *Driver) send(tag byte, fields ...any) error {
+	if tag == 0x10 || tag == 0x11 {
+		index := 0
+		if tag == 0x10 {
+			index = 2
+		}
+		extra := fields[index].(map[string]any)
+		if extra["db"] == "" {
+			delete(extra, "db")
+		}
+	}
 	b, e := Encode(Structure{tag, fields})
 	if e != nil {
 		return e

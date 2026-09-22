@@ -48,7 +48,7 @@ func TestLive(t *testing.T) {
 		t.Skip("set GDB_TEST_URI for disposable database")
 	}
 	password := os.Getenv("GDB_TEST_PASSWORD")
-	d, e := Connect(uri, "gdb", password, "neo4j", 30*time.Second)
+	d, e := Connect(uri, "gdb", password, "", 30*time.Second)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -100,7 +100,7 @@ func TestLive(t *testing.T) {
 	if _, e = d.ExecuteQuery("RETURN 1", nil); e == nil {
 		t.Fatal("expected closed connection")
 	}
-	if bad, e := Connect(uri, "gdb", "wrong-password", "neo4j", 30*time.Second); e == nil {
+	if bad, e := Connect(uri, "gdb", "wrong-password", "", 30*time.Second); e == nil {
 		bad.Close()
 		t.Fatal("expected auth failure")
 	}
