@@ -13,3 +13,15 @@ node_modules/
 *.suo
 .vs/
 .DS_Store
+
+# Go compiled programs / test and profiling output
+*.exe
+*.exe~
+*.test
+*.out
+*.prof
+coverage/
+coverage.txt
+go.work
+go.work.sum
+# go.mod and go.sum remain trackable.
