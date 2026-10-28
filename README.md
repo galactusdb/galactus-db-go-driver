@@ -3,13 +3,16 @@
 [Galactus DB](https://galactusdb.com) · [Driver catalogue](https://galactusdb.com/product/drivers) · [Type mapping](docs/BLUEPRINT.md) · [Spatial guide](docs/SPATIAL.md) · [Issues](https://github.com/galactusdb/galactus-db-go-driver/issues)
 
 Connect Go applications to Galactus DB with parameterised Cypher,
-native values, and explicit transactions. The driver speaks Bolt 4.4 directly
-and has **zero third-party runtime package dependencies**.
+native values, and explicit transactions. The driver speaks Bolt 5.4, falls
+back to Bolt 4.4 when a server asks for it, verifies TLS against the server's
+certificate, and has **zero third-party runtime package dependencies**: only
+the Go standard library.
 
-**Status: 0.1 / early access.** Source is available on `main`. This is a working,
-tested baseline with one connection per driver and eager results. Package-registry
-releases, pooling and cancellation are not available yet. Use source installs
-below and evaluate the [current scope](#current-scope) for your application.
+**Status: 0.2 / early access.** Source is available on `main`. Each driver owns
+one connection and buffers results. After a query error the same driver keeps
+working, and every database error tells you whether it is worth retrying.
+Install from source as shown below and read the [scope](#scope) to see how it
+fits your application.
 
 ## Contents
 
@@ -21,7 +24,7 @@ below and evaluate the [current scope](#current-scope) for your application.
 - [Spatial values](#spatial-values)
 - [Errors and connection lifecycle](#errors-and-connection-lifecycle)
 - [Testing](#testing)
-- [Current scope](#current-scope)
+- [Scope](#scope)
 
 ## Quickstart
 
@@ -95,19 +98,51 @@ Adapt error handling to your application.
 
 `Connect(uri, username, password, database, timeout)`: pass `""` for the server default and `30*time.Second` for a 30-second operation deadline. A nonpositive timeout selects 30 seconds. Close with `defer driver.Close()`.
 
+`ConnectWithOptions(uri, username, password, database, timeout, galactus.Options{...})`
+takes the same arguments plus optional settings: `TrustedCertificates`,
+described under [TLS](#tls).
+
 | Setting | Behaviour |
 |---|---|
-| URI | Direct `bolt://host:port`; omitted port is 7687 |
+| URI | Direct `bolt://host:port` or verified TLS `bolt+s://host:port`; omitted port is 7687 |
 | Authentication | Required username and password; no credentials in the URI |
 | Database | Empty/omitted database delegates selection to the server’s configured default |
 | Named database | Supply an existing database name explicitly, for example `app` |
 | Timeout | Default examples use 30 seconds; see the language-specific units above |
 | Result handling | Records are buffered in memory until the query completes |
 
-Python, Node, Go, Java and C# support verified `bolt+s://` using their system TLS facilities. This driver validates certificate trust and hostname; use a TLS terminator when the database listener is plaintext.
+### TLS
+
+Galactus DB serves TLS itself when it is started with `GDB_TLS_CERT` and
+`GDB_TLS_KEY`, on the same port as plaintext. Connect with `bolt+s://`. The
+driver uses Go's `crypto/tls`, checks the certificate chain and checks that the
+certificate matches the host name in the URI.
+
+Trust comes from the operating system's certificate store. For a private CA or
+a self-signed development server, point the driver at a PEM file instead:
+
+```go
+driver, err := galactus.ConnectWithOptions("bolt+s://db.example.internal:7687", "gdb",
+    os.Getenv("GDB_PASSWORD"), "", 30*time.Second,
+    galactus.Options{TrustedCertificates: "/etc/galactus/ca.pem"})
+```
+
+The file may hold several certificates and replaces the system store for that
+driver. Setting it with a `bolt://` URI returns a `*galactus.ConfigError`.
+Verification is always on, and `bolt+s://` never falls back to plaintext.
+`bolt+ssc://` and the `neo4j://` routing schemes are rejected.
+
+### Connection details
+
+After connecting, `driver.ProtocolVersion()` returns the agreed Bolt version
+(`"5.4"`, or `"4.4"` when the server is capped with `GDB_BOLT_MAX_VERSION=4.4`).
+`driver.ServerAgent()` and `driver.ConnectionID()` return what the server
+reported, and `driver.LastBookmark()` returns the bookmark from the latest
+autocommit query or commit. The driver keeps bookmarks for you to read; it does
+not send them.
 
 Timeouts bound socket waits, not necessarily total query duration or DNS lookup;
-Go uses a deadline for the complete operation. Calls are serialized, but an explicit transaction belongs to the connection. Use one driver per concurrent unit of work. Context cancellation is not implemented yet.
+Go uses a deadline for the complete operation. Calls are serialized, but an explicit transaction belongs to the connection. Use one driver per concurrent unit of work. Calls do not take a `context.Context`; the timeout bounds each operation.
 
 ## Queries and results
 
@@ -131,8 +166,8 @@ present. A query without rows still returns its summary.
 
 Lists and maps can be nested. Values are recursively encoded and hydrated,
 including graph properties and spatial envelopes. Use Cypher `LIMIT` or
-application-level pagination for large result sets: this release is eager,
-not a lazy streaming cursor.
+application-level pagination for large result sets: `ExecuteQuery` returns once
+every record is in memory.
 
 ## Transactions
 
@@ -152,10 +187,12 @@ driver and finish the transaction before reusing it for unrelated work. Closing
 or disposing a connection rolls back an unfinished transaction; it never
 implicitly commits. The read-only argument requests a read transaction.
 
-If a query or transport failure occurs, the driver discards the connection.
-Do not issue rollback on a connection already discarded after failure. A lost
-connection during COMMIT can mean the commit outcome is unknown; reconcile the
-result before retrying a write.
+When the database rejects a query inside a transaction, the driver resets the
+connection and the server rolls the transaction back. `Commit` then returns a
+"no transaction" error, and the driver is ready for the next query or `Begin`.
+A `*galactus.DatabaseError` from `Commit` means the transaction did not commit.
+A lost connection during COMMIT is different: the outcome is unknown, so
+reconcile the result before retrying a write.
 
 ## Native type mapping
 
@@ -166,13 +203,24 @@ Native `int64`, `float64`, `bool`, `string`, `[]byte`, `[]any`, and `map[string]
 - Temporal wrappers preserve nanoseconds, offsets and named zones when the
   runtime’s native types cannot represent the full value.
 - Calendar duration keeps months, days, seconds and nanoseconds separately.
-- Graph nodes, relationships and paths have named result types. Bind their IDs
+- Graph nodes, relationships and paths have named result types. `Node`,
+  `Relationship` and `UnboundRelationship` carry `ElementID` (and a
+  relationship `StartElementID` / `EndElementID`) as strings; for Galactus these
+  are the decimal text of the integer IDs on both Bolt 5 and Bolt 4.4. Bind IDs
   or properties as parameters; the graph entities themselves are result-only.
+- Offset datetimes return as `time.Time` with a fixed zone of the original
+  offset. Named-zone datetimes return as `ZonedDateTime`, which keeps the IANA
+  zone name and records whether its seconds are local or UTC
+  (`NewLocalZonedDateTime`, `NewUTCZonedDateTime`). `Time()` converts one with
+  the system time zone database.
+- `DECIMAL` values return as strings holding their exact digits, such as
+  `"12.30"`. Send decimals as strings and convert them in Cypher with
+  `decimal($amount)`.
 - Unknown wire structures remain explicit structures and cannot be used as
   generic application-object serialization.
 
 No ORM or automatic arbitrary-object mapping is included. Convert application
-models, UUIDs and decimal values explicitly to your chosen supported format.
+models and UUIDs explicitly to a supported value.
 See the [complete type mapping](docs/BLUEPRINT.md) for precision and range details.
 
 ## Spatial values
@@ -215,21 +263,52 @@ solids are outside the current database scope. See the [spatial guide](docs/SPAT
 
 ## Errors and connection lifecycle
 
-Server errors expose `*galactus.DatabaseError` with `Code`, `Message`, and `Metadata` (use `errors.As`). Distinguish these from protocol, connection,
-timeout, and unsupported-value errors in your application.
+Server errors are `*galactus.DatabaseError` with `Code`, `Message` and
+`Metadata` (use `errors.As`). The driver resets the connection after one, so the
+same driver runs your next query. Each error also splits its code into
+`Classification()`, `Category()` and `Title()`, and answers `IsClientError()`,
+`IsTransient()`, `IsDatabaseError()` and `IsRetryable()`. Only transient errors
+are retryable, and the driver never retries by itself.
+
+Compare codes against the published constants:
+
+```go
+_, err := driver.ExecuteQuery("CREATE (:Account {email:$email})", map[string]any{"email": email})
+var dbErr *galactus.DatabaseError
+if errors.As(err, &dbErr) {
+    switch {
+    case dbErr.Code == galactus.ConstraintValidationFailed:
+        // the email is already registered
+    case dbErr.IsRetryable():
+        // safe to run the transaction again
+    }
+}
+```
+
+The constants are `ConstraintValidationFailed`, `TypeError`, `ArgumentError`,
+`SqlTooManyRows`, `SqlCastFailed`, `TableTooLarge`, `UnsupportedFeature`,
+`ProcedureNotFound`, `LicenseRestricted`, `ReadOnlyReplica`,
+`TransactionTimedOut`, `TransactionTerminated`, `SnapshotTooOld`, `Forbidden`,
+`SyntaxError`, `SemanticError`, `Unauthorized` and `DatabaseNotFound`. Codes the
+server adds later still arrive in `Code` as plain strings.
+
+Connection, protocol, TLS and timeout errors are ordinary Go errors; after one
+of those the driver closes its connection. A rejected login also ends the
+connection, because the server closes it. Invalid URIs and options are
+`*galactus.ConfigError`.
 
 | Symptom | Check |
 |---|---|
 | Connection refused | Host, port, listener and network reachability |
 | Authentication rejected | Database username and configured password |
 | Database not found | Explicit database name; omit it to use the server default |
-| TLS negotiation fails | TLS terminator, trust chain and certificate hostname |
+| TLS negotiation fails | Server certificate, trust chain (`TrustedCertificates`) and certificate host name |
 | Unsupported parameter | Convert the object to a supported scalar/container or named value |
-| Driver is closed after an error | Open a new connection; failed connections are discarded |
+| Driver is closed after an error | A connection, protocol or TLS failure closed it; open a new driver |
 
 Credentials and parameters are not logged by the driver. Avoid writing them to
 application logs when reporting errors. The driver performs no automatic write
-retries and has no background connection pool to recover failed connections.
+retries and has no background connection pool to replace closed connections.
 
 ## Testing
 
@@ -243,24 +322,29 @@ Fixtures and tests are self-contained. Without `GDB_TEST_URI`, live database
 tests are skipped. For integration tests, use a fresh disposable server and
 set `GDB_TEST_URI` and `GDB_TEST_PASSWORD`; tests create data and exercise
 transactions. The configured default database is used. Reset the disposable
-database before repeating the suite.
+database before repeating the suite. `GDB_TEST_EXPECT_BOLT` checks the agreed
+protocol, and `GDB_TEST_CA_FILE` supplies the trusted certificate for a
+`bolt+s://` run.
 
 See [test instructions](tests/README.md) for platform prerequisites and environment
-examples. The shared live suite covers 57 spatial cases per language, integer
-boundaries, native values, large chunked payloads, transactions and failures.
+examples. The shared live suite runs against Bolt 5.4, Bolt 4.4 and TLS servers
+and covers 57 spatial cases, integer boundaries, native values, datetimes,
+element ids, decimals, large chunked payloads, transactions, recovery after
+errors and error classification.
 
-## Current scope
+## Scope
 
-This release provides direct connections, basic authentication, parameterised
-queries, eager records and summaries, explicit transactions, native type mapping,
-and full supported spatial interchange. It does not yet provide pooling,
-routing discovery, managed retry callbacks, lazy cursors, cancellation, an ORM,
-or asynchronous APIs outside Node. Messages are capped at 64 MiB and nesting at
-64 levels; aggregate result memory can exceed a single message.
+Version 0.2 provides direct connections over Bolt 5.4 or 4.4, verified TLS,
+basic authentication, parameterised queries, buffered records and summaries,
+explicit transactions, recovery after database errors, error classification,
+native type mapping and full spatial interchange. Each driver owns a single
+connection; connection pooling, cluster routing, managed retry callbacks,
+streaming cursors and context cancellation are outside this release. Messages
+are capped at 64 MiB and nesting at 64 levels; a buffered result can be larger
+than a single message.
 
-Windows builds and real-server interoperability have been tested. Broader
-platform validation, TLS interoperability and production load testing remain
-release work. See [the shared blueprint](docs/BLUEPRINT.md) and
+The driver has been tested on Windows against real Galactus servers speaking
+Bolt 5.4, Bolt 4.4 and TLS. See [the shared blueprint](docs/BLUEPRINT.md) and
 [implementation overview](docs/OVERVIEW.md) for the precise contract.
 
 ## Feedback and contribution
