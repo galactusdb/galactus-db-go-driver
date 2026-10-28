@@ -79,7 +79,8 @@ Discard the connection, as in 0.1, when:
 
 - reading or writing fails (I/O, timeout, TLS),
 - the peer breaks the protocol (malformed message, unexpected response),
-- RESET itself does not end in SUCCESS,
+- RESET itself does not end in SUCCESS (raise the original database error),
+- an IGNORED arrives anywhere other than while reading RESET's reply,
 - authentication fails.
 
 A FAILURE answering COMMIT means the transaction did not commit. A transport
@@ -267,7 +268,8 @@ keeps `code` and `message` unchanged and adds, in the language's naming:
 Each driver also publishes the codes below as constants (Python module
 constants, a C# static class, Java/Go/Rust/C++ constants, a frozen Node object),
 named after the title in the language's constant style (`ErrorCodes.TypeError`
-in C# and Java, `codes.TYPE_ERROR` in Python, `galactus.TypeError` in Go), so applications
+in C#, `ErrorCodes.TYPE_ERROR` in Java, `codes.TYPE_ERROR` in Python, `galactus.CodeTypeError` in Go, `codes::TYPE_ERROR` in Rust,
+`galactus::codes::type_error` in C++), so applications
 compare against a name rather than a string. Codes the server adds later still work as plain strings.
 
 | Constant | Code |
@@ -291,7 +293,7 @@ compare against a name rather than a string. Codes the server adds later still w
 | Unauthorized | `Neo.ClientError.Security.Unauthorized` |
 | DatabaseNotFound | `Neo.ClientError.Database.DatabaseNotFound` |
 
-Keep the constants inside a codes namespace (in Go, the package) so names such
+Keep the constants inside a codes namespace (in Go, a `Code` prefix) so names such
 as `TypeError` do not clash with the language's own. A configuration error (for example a trusted
 certificate file on a `bolt://` URI) raises the language's usual argument or
 configuration error before connecting.
