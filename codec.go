@@ -14,13 +14,13 @@ func validateParameters(v any, depth int) error {
 	if depth >= 64 {
 		return fmt.Errorf("nesting exceeds 64 levels")
 	}
-	v = dehydrate(v)
+	v = dehydrate(v, false)
 	if v == nil {
 		return nil
 	}
 	if s, ok := v.(Structure); ok {
 		switch s.Tag {
-		case 0x44, 0x74, 0x54, 0x64, 0x46, 0x66, 0x45, 0x58, 0x59:
+		case 0x44, 0x74, 0x54, 0x64, 0x46, 0x66, 0x49, 0x69, 0x45, 0x58, 0x59:
 		default:
 			return fmt.Errorf("graph entities and unknown structures are result-only; pass properties or an ID")
 		}
@@ -52,7 +52,15 @@ func validateParameters(v any, depth int) error {
 	return nil
 }
 
-func Encode(value any) ([]byte, error) {
+// Encode writes Bolt 4.4 value forms, as in 0.1. Use EncodeProtocol for a
+// Bolt 5 connection.
+func Encode(value any) ([]byte, error) { return EncodeProtocol(value, false) }
+
+// EncodeProtocol writes the value forms of the agreed protocol: Bolt 5 when
+// bolt5 is true (offset datetimes as I, graph values with element ids), Bolt
+// 4.4 otherwise (offset datetimes as F). Named-zone datetimes keep their own
+// basis on both. Decode accepts every form on any protocol.
+func EncodeProtocol(value any, bolt5 bool) ([]byte, error) {
 	out := []byte{}
 	var put func(any, int) error
 	header := func(n int, tiny, base byte) {
@@ -71,7 +79,7 @@ func Encode(value any) ([]byte, error) {
 		if depth >= 64 {
 			return fmt.Errorf("nesting exceeds 64 levels")
 		}
-		v = dehydrate(v)
+		v = dehydrate(v, bolt5)
 		if v == nil {
 			out = append(out, 0xc0)
 			return nil
