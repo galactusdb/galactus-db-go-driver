@@ -15,7 +15,7 @@
   `*ConfigError`. Invalid URIs are also reported as `*ConfigError`.
 - `DatabaseError` gains `Classification()`, `Category()`, `Title()`,
   `IsClientError()`, `IsTransient()`, `IsDatabaseError()` and `IsRetryable()`,
-  and the package publishes code constants such as `ConstraintValidationFailed`.
+  and the package publishes code constants such as `CodeConstraintValidationFailed`.
 - `Node`, `Relationship` and `UnboundRelationship` gain `ElementID` (and
   `StartElementID` / `EndElementID`), filled from the integer ids on Bolt 4.4.
 - Datetimes: decoders accept `F`, `f`, `I` and `i` on any protocol. Offset

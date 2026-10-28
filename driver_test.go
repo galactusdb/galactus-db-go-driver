@@ -126,15 +126,15 @@ func TestDatetimePairs(t *testing.T) {
 }
 
 func TestErrorClassification(t *testing.T) {
-	e := &DatabaseError{Code: SnapshotTooOld}
+	e := &DatabaseError{Code: CodeSnapshotTooOld}
 	if e.Classification() != "TransientError" || e.Category() != "Transaction" || e.Title() != "SnapshotTooOld" || !e.IsTransient() || !e.IsRetryable() || e.IsClientError() || e.IsDatabaseError() {
 		t.Fatal("transient classification")
 	}
-	e = &DatabaseError{Code: ConstraintValidationFailed}
+	e = &DatabaseError{Code: CodeConstraintValidationFailed}
 	if !e.IsClientError() || e.IsRetryable() || e.Title() != "ConstraintValidationFailed" {
 		t.Fatal("client classification")
 	}
-	if !(&DatabaseError{Code: UnsupportedFeature}).IsDatabaseError() {
+	if !(&DatabaseError{Code: CodeUnsupportedFeature}).IsDatabaseError() {
 		t.Fatal("database classification")
 	}
 	e = &DatabaseError{Code: "Odd.Code"}
@@ -214,14 +214,25 @@ func TestLive(t *testing.T) {
 	}
 	utc := time.Date(2026, 6, 1, 11, 0, 0, 5, time.UTC).Unix() // 12:00 BST
 	for _, z := range []ZonedDateTime{NewUTCZonedDateTime(utc, 5, "Europe/London"), NewLocalZonedDateTime(utc+3600, 5, "Europe/London")} {
+		// The server answers in its protocol's basis; compare instant and zone.
 		back := query("RETURN $v AS v", map[string]any{"v": z}).Records[0]["v"].(ZonedDateTime)
-		want := NewLocalZonedDateTime(utc+3600, 5, "Europe/London") // 4.4 answers with f
-		if d.ProtocolVersion() != "4.4" {
-			want = NewUTCZonedDateTime(utc, 5, "Europe/London") // 5.x answers with i
+		want, e1 := z.Time()
+		got, e2 := back.Time()
+		if e1 != nil || e2 != nil || !got.Equal(want) || back.ZoneID != z.ZoneID || got.Nanosecond() != 5 {
+			t.Fatal("named-zone datetime", z, back, e1, e2)
 		}
-		if back != want {
-			t.Fatal("named-zone datetime", z, back, want)
-		}
+	}
+
+	// A parameter that fails validation is rejected before sending; the
+	// connection stays usable.
+	if _, e = d.ExecuteQuery("RETURN $v AS v", map[string]any{"v": struct{}{}}); e == nil {
+		t.Fatal("expected unsupported parameter error")
+	}
+	if _, e = d.ExecuteQuery("RETURN $v AS v", map[string]any{"v": Node{ID: 1}}); e == nil {
+		t.Fatal("expected graph parameter rejection")
+	}
+	if query("RETURN 1 AS one", nil).Records[0]["one"] != int64(1) {
+		t.Fatal("query after rejected parameter")
 	}
 
 	// Element ids are the decimal text of the integer ids.
@@ -283,7 +294,7 @@ func TestLive(t *testing.T) {
 	// Unique constraint violation.
 	query("CREATE CONSTRAINT FOR (n:DriverGoUnique) REQUIRE n.key IS UNIQUE", nil)
 	query("CREATE (:DriverGoUnique {key:'k'})", nil)
-	if _, e = d.ExecuteQuery("CREATE (:DriverGoUnique {key:'k'})", nil); !errors.As(e, &dbe) || dbe.Code != ConstraintValidationFailed || dbe.Title() != "ConstraintValidationFailed" {
+	if _, e = d.ExecuteQuery("CREATE (:DriverGoUnique {key:'k'})", nil); !errors.As(e, &dbe) || dbe.Code != CodeConstraintValidationFailed || dbe.Title() != "ConstraintValidationFailed" {
 		t.Fatal("expected constraint violation", e)
 	}
 

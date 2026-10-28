@@ -109,7 +109,7 @@ automatically replay a write.
 Database errors keep the server code and message and add the code's
 classification, category and title, with client/transient/database checks and a
 retryable flag that is true for transient errors only. Each driver publishes the
-common codes as constants (Go: `galactus.ConstraintValidationFailed` and so on).
+common codes as constants (Go: `galactus.CodeConstraintValidationFailed` and so on).
 
 Returned graph entities are result-only database types; bind their IDs or
 properties rather than the entities. Arbitrary application objects and UUIDs

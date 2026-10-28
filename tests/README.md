@@ -54,7 +54,7 @@ agreed protocol, native values and large chunked strings, spatial round trips,
 offset and named-zone (`Europe/London`) datetimes, element ids on nodes and
 relationships, commit and rollback, recovery after a failed query (the same
 driver then runs `RETURN 1`), a failure inside a transaction closing it, a
-unique-constraint violation reported as `ConstraintValidationFailed` with its
+unique-constraint violation reported as `CodeConstraintValidationFailed` with its
 classification, `DECIMAL` results as strings, and rejected authentication. When
 `GDB_TEST_CA_FILE` is set the URI must be `bolt+s://`: the test connects with the
 trusted certificate, checks that connecting without it fails certificate

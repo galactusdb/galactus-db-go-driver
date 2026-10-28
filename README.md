@@ -277,7 +277,7 @@ _, err := driver.ExecuteQuery("CREATE (:Account {email:$email})", map[string]any
 var dbErr *galactus.DatabaseError
 if errors.As(err, &dbErr) {
     switch {
-    case dbErr.Code == galactus.ConstraintValidationFailed:
+    case dbErr.Code == galactus.CodeConstraintValidationFailed:
         // the email is already registered
     case dbErr.IsRetryable():
         // safe to run the transaction again
@@ -285,11 +285,13 @@ if errors.As(err, &dbErr) {
 }
 ```
 
-The constants are `ConstraintValidationFailed`, `TypeError`, `ArgumentError`,
-`SqlTooManyRows`, `SqlCastFailed`, `TableTooLarge`, `UnsupportedFeature`,
-`ProcedureNotFound`, `LicenseRestricted`, `ReadOnlyReplica`,
-`TransactionTimedOut`, `TransactionTerminated`, `SnapshotTooOld`, `Forbidden`,
-`SyntaxError`, `SemanticError`, `Unauthorized` and `DatabaseNotFound`. Codes the
+The constants are `Code` followed by the title: `CodeConstraintValidationFailed`,
+`CodeTypeError`, `CodeArgumentError`, `CodeSqlTooManyRows`, `CodeSqlCastFailed`,
+`CodeTableTooLarge`, `CodeUnsupportedFeature`, `CodeProcedureNotFound`,
+`CodeLicenseRestricted`, `CodeReadOnlyReplica`, `CodeTransactionTimedOut`,
+`CodeTransactionTerminated`, `CodeSnapshotTooOld`, `CodeForbidden`,
+`CodeSyntaxError`, `CodeSemanticError`, `CodeUnauthorized` and
+`CodeDatabaseNotFound`. Codes the
 server adds later still arrive in `Code` as plain strings.
 
 Connection, protocol, TLS and timeout errors are ordinary Go errors; after one
