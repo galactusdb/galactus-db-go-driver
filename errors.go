@@ -55,10 +55,10 @@ const (
 	CodeTransactionTerminated      = "Galactus.ClientError.Transaction.Terminated"
 	CodeSnapshotTooOld             = "Galactus.TransientError.Transaction.SnapshotTooOld"
 	CodeForbidden                  = "Galactus.ClientError.Security.Forbidden"
-	CodeSyntaxError                = "Neo.ClientError.Statement.SyntaxError"
-	CodeSemanticError              = "Neo.ClientError.Statement.SemanticError"
-	CodeUnauthorized               = "Neo.ClientError.Security.Unauthorized"
-	CodeDatabaseNotFound           = "Neo.ClientError.Database.DatabaseNotFound"
+	CodeSyntaxError                = "Galactus.ClientError.Statement.SyntaxError"
+	CodeSemanticError              = "Galactus.ClientError.Statement.SemanticError"
+	CodeUnauthorized               = "Galactus.ClientError.Security.Unauthorized"
+	CodeDatabaseNotFound           = "Galactus.ClientError.Database.DatabaseNotFound"
 )
 
 // ConfigError reports an invalid URI or option. Nothing was sent.
