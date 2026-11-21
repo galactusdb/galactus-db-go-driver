@@ -17,7 +17,7 @@ import (
 )
 
 // Version is the driver release.
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // UserAgent is sent as user_agent and as the bolt_agent product.
 const UserAgent = "galactus-db-go-driver/" + Version

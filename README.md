@@ -8,7 +8,7 @@ back to Bolt 4.4 when a server asks for it, verifies TLS against the server's
 certificate, and has **zero third-party runtime package dependencies**: only
 the Go standard library.
 
-**Status: 0.2 / early access.** Source is available on `main`. Each driver owns
+**Status: 0.3 / early access.** Source is available on `main`. Each driver owns
 one connection and buffers results. After a query error the same driver keeps
 working, and every database error tells you whether it is worth retrying.
 Install from source as shown below and read the [scope](#scope) to see how it
@@ -374,10 +374,10 @@ errors and error classification.
 
 ## Scope
 
-Version 0.2 provides direct connections over Bolt 5.4 or 4.4, verified TLS,
+Version 0.3 provides direct connections over Bolt 5.4 or 4.4, verified TLS,
 basic authentication, parameterised queries, buffered records and summaries,
 explicit transactions, recovery after database errors, error classification,
-native type mapping and full spatial interchange. Each driver owns a single
+native type mapping, an object mapper and full spatial interchange. Each driver owns a single
 connection; connection pooling, cluster routing, managed retry callbacks,
 streaming cursors and context cancellation are outside this release. Messages
 are capped at 64 MiB and nesting at 64 levels; a buffered result can be larger
