@@ -1,7 +1,7 @@
 # Galactus DB drivers
 
 Seven native **database drivers**, with a shared API and zero third-party runtime
-packages. Version **0.2.0** is early access. All seven source repositories are
+packages. Version **0.3.0** is early access. All seven source repositories are
 public under [galactusdb](https://github.com/galactusdb), with `main` as the default
 branch. Registry packages have not been published; install from source using the
 language Quickstart and pin a reviewed commit. Each driver speaks **Bolt 5.4**
@@ -73,16 +73,20 @@ conversion through GeoJSON. Bind a `Spatial` value directly, then use
 `spatial.fromMap($shape)` in Cypher to turn that envelope into a database shape.
 This explicit promotion is required by the existing server protocol.
 
-## Scope of 0.2
+## Scope of 0.3
 
 These are small **single-connection, eager-result drivers**. One connection is
 owned by each driver. Use a separate driver for each concurrent unit of work,
 especially transactions. Go, Java and C# serialize calls; Node rejects overlapping
 operations; Python and C++ must not be shared concurrently; Rust requires mutable
 access. There is no connection pool, routing discovery, automatic retry,
-managed transaction callback, lazy cursor, ORM, or async API outside Node in
-0.2. Bookmarks are exposed but not sent; session re-authentication, routing and
+managed transaction callback, lazy cursor, or async API outside Node in
+0.3. Bookmarks are exposed but not sent; session re-authentication, routing and
 telemetry messages are not used.
+
+Each driver carries an optional object mapper: declare a type as a node or a
+relationship and it converts objects to and from the graph. [The mapper
+contract](MAPPER.md) is the same in every language.
 
 `bolt://` is direct TCP. `bolt+s://` is verified TLS with the URI host as the
 server name. Python, Node, Go, Java and C# include it using their standard TLS

@@ -8,7 +8,7 @@ back to Bolt 4.4 when a server asks for it, verifies TLS against the server's
 certificate, and has **zero third-party runtime package dependencies**: only
 the Go standard library.
 
-**Status: 0.2 / early access.** Source is available on `main`. Each driver owns
+**Status: 0.3 / early access.** Source is available on `main`. Each driver owns
 one connection and buffers results. After a query error the same driver keeps
 working, and every database error tells you whether it is worth retrying.
 Install from source as shown below and read the [scope](#scope) to see how it
@@ -21,6 +21,7 @@ fits your application.
 - [Queries and results](#queries-and-results)
 - [Transactions](#transactions)
 - [Native type mapping](#native-type-mapping)
+- [Object mapping](#object-mapping)
 - [Spatial values](#spatial-values)
 - [Errors and connection lifecycle](#errors-and-connection-lifecycle)
 - [Testing](#testing)
@@ -219,9 +220,46 @@ Native `int64`, `float64`, `bool`, `string`, `[]byte`, `[]any`, and `map[string]
 - Unknown wire structures remain explicit structures and cannot be used as
   generic application-object serialization.
 
-No ORM or automatic arbitrary-object mapping is included. Convert application
+The optional [mapper](#object-mapping) converts your own types to and from nodes. Convert application
 models and UUIDs explicitly to a supported value.
 See the [complete type mapping](docs/BLUEPRINT.md) for precision and range details.
+
+## Object mapping
+
+The driver includes an optional mapper: declare a type as a node or a relationship, and it
+converts objects to and from the graph and writes the Cypher for the everyday operations.
+It adds no dependency. [docs/MAPPER.md](docs/MAPPER.md) is the full contract, shared by every
+Galactus driver.
+
+```go
+type Person struct {
+	ID    int64   `galactus:"id,key"`
+	Name  string  `galactus:"name"`
+	Email *string `galactus:"email_address"`
+}
+type Company struct {
+	Name string `galactus:",key"`
+}
+type WorksAt struct{ Since int64 }
+
+func (WorksAt) RelationshipType() string { return "WORKS_AT" }
+
+mapper := galactus.NewMapper(driver)
+ann, err := galactus.Save(mapper, Person{ID: 1, Name: "Ann"})
+acme, err := galactus.Save(mapper, Company{Name: "Acme"})
+_, err = galactus.Relate(mapper, ann, WorksAt{Since: 2024}, acme)
+
+found, err := galactus.Find[Person](mapper, int64(1))           // *Person, nil when there is none
+people, err := galactus.FindAll[Person](mapper, map[string]any{"Name": "Ann"}, 10)
+jobs, err := galactus.Related[WorksAt, Company](mapper, ann)    // []Pair[WorksAt, Company]
+as, err := galactus.Query[Person](mapper, "MATCH (p:Person) WHERE p.name STARTS WITH $s RETURN p", map[string]any{"s": "A"})
+deleted, err := galactus.Delete[Person](mapper, int64(1))
+```
+
+A field with no tag is stored under its name with a lower-case start; `galactus:"-"` leaves a field out. A filter is keyed by Go field name.
+`Query` maps what a statement of your own returns, so the mapper never stands between you
+and Cypher. Every operation is one statement and joins the driver's open transaction when
+there is one.
 
 ## Spatial values
 
@@ -336,10 +374,10 @@ errors and error classification.
 
 ## Scope
 
-Version 0.2 provides direct connections over Bolt 5.4 or 4.4, verified TLS,
+Version 0.3 provides direct connections over Bolt 5.4 or 4.4, verified TLS,
 basic authentication, parameterised queries, buffered records and summaries,
 explicit transactions, recovery after database errors, error classification,
-native type mapping and full spatial interchange. Each driver owns a single
+native type mapping, an object mapper and full spatial interchange. Each driver owns a single
 connection; connection pooling, cluster routing, managed retry callbacks,
 streaming cursors and context cancellation are outside this release. Messages
 are capped at 64 MiB and nesting at 64 levels; a buffered result can be larger
